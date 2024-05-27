@@ -1,6 +1,6 @@
 # Camera-LiDAR Extrinsic Calibration using Constrained Optimization with Circle Placement
 
-### Abstract
+## Abstract
 ```
 Camera-LiDAR data fusion has demonstrated remarkable environmental perception capabilities in various fields.
 The success of data fusion relies on the accurate matching of correspondence features from images and point clouds.
@@ -10,23 +10,36 @@ This optimization involves generating the probability distribution of circle cen
 We conduct two types of experiments: simulations for quantitative results and real system evaluations for qualitative assessment. 
 Our method demonstrates a $21\%$ improvement in simulation calibration performance for 20 target poses with LiDAR noise of $0.03\,m$ compared to existing methods, and also shows high visual quality in re-projecting point cloud onto images in real-world scenarios.
 ```
-### Framework
+## Framework
 ![Framework](images/framework.png)
 
 ### Getting Started 
-> #### Requirements 
->  > * Ubuntu 20.04 
->  > * Python 3.8
->  > * ROS Noetic 
 
-* LiDAR 
-* Camera
+#### Requirements 
+We was tested on Ubuntu 20.04 64-bit 
+* Ubuntu 20.04 
+* Python 3.8
+* Scipy 1.10.1
 
-### Contact
+#### Calibration Board  
+We use a planar board with four circular hole placed on rectangular shaped, which has the same size of ([velo2cam](https://github.com/beltransen/velo2cam_calibration))
+
+### LiDAR  
+
+###  Camera 
+Camera features is extracted using the ([lvt2calib](https://github.com/Clothooo/lvt2calib)) 
+
+## Contact
 For any questions, please contact to us at 
 [kdh2769@khu.ac.kr](mailto:kdh2769@khu.ac.kr)
 
-### Citation 
+## Thanks
+
+[1] J. Beltr ́an, C. Guindel, A. de la Escalera, and F. Garc ́ıa, “Automatic extrinsic calibration method for lidar and camera sensor setups,” IEEE Transactions on Intelligent Transportation Systems, vol. 23, no. 10, pp. 17 677–17 689, 2022
+
+[2] J. Zhang, Y. Liu, M. Wen, Y. Yue, H. Zhang, and D. Wang, “L2v2t2 calib: Automatic and unified extrinsic calibration toolbox for different 3d lidar, visual camera and thermal camera,” in 2023 IEEE Intelligent Vehicles Symposium (IV). IEEE, 2023, pp. 1–7
+
+## Citation 
 Please consider citing this work if you use our code in your research:
 ```
 @
