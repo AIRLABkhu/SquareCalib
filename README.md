@@ -18,9 +18,9 @@ Our method demonstrates a 21% improvement in simulation calibration performance 
 ![Framework](images/framework.png)
 
 ## Getting Started 
+* Example:  **'3 target poses with 30 LiDAR scans'** calibration scenario.
 
 ### 1.Requirements 
-* The following exmample is a **'3 target poses with 30 LiDAR scans'** calibration scenario. 
 
 #### 1.1 Setup 
 * Our code is tested on Ubuntu 20.04 64-bit with ROS Noetic 
@@ -74,14 +74,14 @@ python3 ./src/vlp_features.py
 
 ### 4. 3D Point-to-Point Alignment 
 ```
-// Check the camera & LiDAR features path 
+// check the camera & LiDAR features path 
 
 python3 ./src/alignment.py
 ```
 
 ### 5. Reprojection 
 ```
-// Check the extrinisc parameters path 
+// check the extrinisc parameters path 
 
 python3 ./src/reprojection.py
 ```
