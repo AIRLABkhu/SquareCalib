@@ -1,13 +1,11 @@
 import numpy as np 
 import math
-import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
 from itertools import combinations
 from scipy.spatial.distance import cdist
 from scipy import optimize
 import open3d as o3d 
 from scipy.spatial.transform import Rotation
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import multivariate_normal
 
 np.random.seed(42)
@@ -20,11 +18,9 @@ def data_roi_setting(pcd_np):
     # pose 2
     pcd_np_y_min_mask = pcd_np[:,0] > 1.5
     pcd_np = pcd_np[pcd_np_y_min_mask]
-    pcd_np_y_min_mask = pcd_np[:,0] < 5
+    pcd_np_y_min_mask = pcd_np[:,1] > -4
     pcd_np = pcd_np[pcd_np_y_min_mask]
-    pcd_np_y_min_mask = pcd_np[:,1] > -2
-    pcd_np = pcd_np[pcd_np_y_min_mask]
-    pcd_np_y_min_mask = pcd_np[:,1] < 2
+    pcd_np_y_min_mask = pcd_np[:,1] < 4
     pcd_np = pcd_np[pcd_np_y_min_mask]
 
     return pcd_np
@@ -58,13 +54,7 @@ def edges_detector_laser_num(pts):
                 
                 depth_discontinuous.append(cur)
 
-   
     depth_discontinuous = np.array(depth_discontinuous)
-    # ax = plt.figure().add_subplot(projection='3d')
-    # ax.scatter(pts[:, 0], pts[:, 1], pts[:,2 ], c= 'b', alpha= 0.01)
-
-    # ax.scatter(depth_discontinuous[:, 0], depth_discontinuous[:, 1], depth_discontinuous[:,2 ], c= 'r')
-    # plt.show()
     edges = depth_discontinuous
     board = pts[:, :3]
 
@@ -79,58 +69,40 @@ def filter_circle_edges(edges):
             if len(pts) != 0 :
                 circle_laser = np.append(circle_laser, filtered_pts, axis=0)
 
-
     return circle_laser
 
 def ransac_pca_rot(pts, circle_pts):
-    MODE = 'RANSAC'
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pts)
 
     labels = np.array(
         pcd.cluster_dbscan(eps=0.2, min_points=10, print_progress=True))
-
     target_point = circle_pts[0, :3] 
 
-    boards_cluster = None
     for label in set(labels):
         if label == -1:
-            continue  # -1은 outlier를 나타냅니다.
+            continue 
 
         cluster_indices = np.where(labels == label)[0]
         cluster = pcd.select_by_index(cluster_indices)
         is_point_present = np.any(np.all(np.isclose(np.asarray(cluster.points), target_point), axis=1))
 
-        if is_point_present: # 만약에 저 세그먼트가 board의 세그먼트라면 
-            if MODE == 'PCA':
-                board_pts = np.asarray(cluster.points)
-                covariance_matrix = np.cov(board_pts, rowvar=False)
+        if is_point_present: 
+            plane_model, inliers = cluster.segment_plane(distance_threshold=0.01 , ransac_n=3, num_iterations=500) # Ransac
+            board_pts = np.asarray(cluster.points)
 
-                # NumPy의 linalg.eig 함수를 사용하여 고유값(eigenvalues)과 고유벡터(eigenvectors) 계산
-                eigenvalues, eigenvectors = np.linalg.eig(covariance_matrix)
+            plane_normal = plane_model[0:3]
+            a, b, c = plane_normal[0], plane_normal[1], plane_normal[2]
+            v1 = np.array([a, b, c])
+            v2 = np.array([0, 0, 1])
+            cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            theta = np.arccos(cos_theta)
 
-                # 고유값과 고유벡터를 내림차순으로 정렬
-                sorted_indices = np.argsort(eigenvalues)[::-1]
-                eigenvalues = eigenvalues[sorted_indices]
-                eigenvectors = eigenvectors[:, sorted_indices]
-                return board_pts, eigenvectors
-            
-            elif MODE == 'RANSAC':
-                plane_model, inliers = cluster.segment_plane(distance_threshold=0.01 , ransac_n=3, num_iterations=500) # Ransac
-                board_pts = np.asarray(cluster.points)
+            rotation_vector = np.cross(v1, v2)
+            rotation_matrix = Rotation.from_rotvec(rotation_vector * theta).as_matrix()
+            normal_vec = v1
 
-                plane_normal = plane_model[0:3]
-                a, b, c = plane_normal[0], plane_normal[1], plane_normal[2]
-                v1 = np.array([a, b, c])
-                v2 = np.array([0, 0, 1])
-                cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-                theta = np.arccos(cos_theta)
-
-                rotation_vector = np.cross(v1, v2)
-                rotation_matrix = Rotation.from_rotvec(rotation_vector * theta).as_matrix()
-                normal_vec = v1
-
-                return board_pts, rotation_matrix, normal_vec
+            return board_pts, rotation_matrix, normal_vec
                 
 def get_transformation_matrix_scipy(tx, ty, tz, rx, ry, rz):
     translation_matrix = np.array([[tx],
@@ -143,80 +115,18 @@ def get_transformation_matrix_scipy(tx, ty, tz, rx, ry, rz):
     transformation_matrix = np.concatenate([transformation_matrix, margin], axis=0)
 
     return transformation_matrix
-    
-def dbscan_clustering(point_cloud_data, epsilon, min_samples):
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(point_cloud_data)
-
-    labels = np.array(
-        pcd.cluster_dbscan(eps=epsilon, min_points=min_samples, print_progress=True))
-    
-    return labels
-
-def find_intersection(line_vectors, plane_normal, plane_origin):
-    inter_pts = []
-
-    for line_vector in line_vectors:
-        line_direction = line_vector / norm(line_vector)
-        # line_direction = line_vector
-        plane_normal = plane_normal / norm(plane_normal)
-        
-        t = -np.dot(plane_normal, (line_vector - plane_origin)) / np.dot(plane_normal, line_direction)
-        
-        intersection_point = line_vector + (t)* line_direction
-
-        inter_pts.append(intersection_point)
-
-
-        point_cloud = o3d.geometry.PointCloud()
-        point_cloud.points = o3d.utility.Vector3dVector(line_vectors)
-        ##
-        start_point = np.array([0, 0, 0])
-        line_points = np.vstack([start_point, line_vector])
-
-        lines = [[0, 1]]
-
-        line_set = o3d.geometry.LineSet()
-        line_set.points = o3d.utility.Vector3dVector(line_points)
-        line_set.lines = o3d.utility.Vector2iVector(lines)
-        ##
-        start_point = np.array([0, 0, 0])
-        line_points = np.vstack([start_point, intersection_point])
-
-        lines = [[0, 1]]
-
-        line_set2 = o3d.geometry.LineSet()
-        line_set2.points = o3d.utility.Vector3dVector(line_points)
-        line_set2.lines = o3d.utility.Vector2iVector(lines)
-
-        one_point_cloud = o3d.geometry.PointCloud()
-        one_point_cloud.points = o3d.utility.Vector3dVector(np.array([intersection_point]))
-
-        o3d.visualization.draw_geometries([point_cloud, line_set, line_set2, one_point_cloud])
-
-
-
-    
-    return np.array(inter_pts)
 
 def find_intersection_between_line_and_plane(start_point, end_points, plane_origin, plane_normal):
     temp = []
     for end_point in end_points:
         start_point = np.array(start_point)
         end_point = np.array(end_point)[:3]
-
-        # 평면의 원점과 법선 벡터
         plane_origin = np.array(plane_origin)
         plane_normal = np.array(plane_normal)
-
-        # 직선의 방향 벡터
         line_direction = end_point - start_point
 
-        # 직선의 방향 벡터와 평면의 법선 벡터가 수직이 아니면 교점이 없음
         if np.dot(line_direction, plane_normal) == 0:
             return None
-
-        # 직선과 평면의 교점 계산
         t = np.dot(plane_normal, (plane_origin - start_point)) / np.dot(plane_normal, line_direction)
         intersection_point = start_point + t * line_direction
         intersection_point.tolist()
@@ -225,7 +135,6 @@ def find_intersection_between_line_and_plane(start_point, end_points, plane_orig
     return np.array(temp)
 
 def circle_model_known_radius(params, points, known_radius):
-    # 주어진 반지름을 가진 원 모델에 대한 residual 함수
     cx, cy = params
     return np.sqrt((points[:, 0] - cx)**2 + (points[:, 1] - cy)**2) - known_radius
 
@@ -234,64 +143,38 @@ def ransac_circle_fit_known_radius(points, known_radius, threshold=0.02, max_ite
     best_params = None
 
     for _ in range(max_iterations):
-        # RANSAC 단계: 무작위로 세 점 선택
         sample_indices = np.random.choice(len(points), 3, replace=False)
         sample_points = points[sample_indices]
-
-        # least_squares를 사용하여 모델 파라미터 추정
         initial_params = [np.mean(sample_points[:, 0]), np.mean(sample_points[:, 1])]
-        
         result = least_squares(circle_model_known_radius, initial_params, args=(sample_points, known_radius), method='lm')
-
-        # 임계값 내의 인라이어 확인
         inliers = np.abs(circle_model_known_radius(result.x, points, known_radius)) < threshold
 
-        # 현재 모델의 인라이어 수가 최고 인라이어 수보다 크면 갱신
         if best_inliers is None or np.sum(inliers) > np.sum(best_inliers):
             best_inliers = inliers
             best_params = result.x
 
-    # 최적의 원 모델 파라미터와 인라이어 포인트 반환
     return np.concatenate((best_params, [known_radius])), points[best_inliers], best_inliers
 
 def calc_R(xc, yc):
-    """ calculate the distance of each data points from the center (xc, yc) """
     return np.sqrt((x-xc)**2 + (y-yc)**2)
 
 def f_2b(c):
-    """ calculate the algebraic distance between the 2D points and the mean circle centered at c=(xc, yc) """
     Ri = calc_R(*c)
     return Ri - Ri.mean()
 
 def Df_2b(c):
-
-    """ Jacobian of f_2b
-    The axis corresponding to derivatives must be coherent with the col_deriv option of leastsq"""
     xc, yc     = c
     df2b_dc    = np.empty((len(c), x.size))
 
     Ri = calc_R(xc, yc)
-    df2b_dc[0] = (xc - x)/Ri                   # dR/dxc
-    df2b_dc[1] = (yc - y)/Ri                   # dR/dyc
+    df2b_dc[0] = (xc - x)/Ri            
+    df2b_dc[1] = (yc - y)/Ri                 
     df2b_dc    = df2b_dc - df2b_dc.mean(axis=1)[:, np.newaxis]
 
     return df2b_dc
 
-def calculate_direction(o1, a1):
-    # o1에서 a1으로 가는 방향 벡터 계산
-    direction = (a1[0] - o1[0], a1[1] - o1[1])
-    
-    # 방향 벡터의 크기 계산
-    magnitude = np.sqrt(direction[0] ** 2 + direction[1] ** 2)
-    
-    # 정규화된 방향 벡터 반환
-    normalized_direction = (direction[0] / magnitude, direction[1] / magnitude)
-    
-    return normalized_direction
-
 def move_point(origin_pt, target_pt, distance = 0.1, radius=None):
     direction = calculate_direction(origin_pt, target_pt)
-    # distance = np.linalg.norm(origin_pt - target_pt) - radius
     moved_target_pt = (target_pt[0] - direction[0] * distance, target_pt[1] - direction[1] * distance)
     
     return np.array(moved_target_pt)   
@@ -317,30 +200,21 @@ def cartesian_to_polar_for_circle(edge_points, center, min_idx):
     return new_theta
 
 def draw_circle_arc(center, point, num_points):
-    # 중심과 임의의 점을 이용하여 직선의 기울기를 계산
     slope = (point[1] - center[1]) / (point[0] - center[0])
-
-    # 직선의 각도를 라디안으로 변환
     angle_radians = np.arctan(slope) 
 
-    # 호를 그리기 위한 각도 범위 설정
     theta = np.linspace(angle_radians - np.radians(13), angle_radians + np.radians(0), num_points)
     theta = np.flip(theta)
   
-    # 호의 좌표 계산
     arc_x = center[0] + np.cos(theta) * np.linalg.norm(np.array(point) - np.array(center))
     arc_y = center[1] + np.sin(theta) * np.linalg.norm(np.array(point) - np.array(center))
 
     pts_0 = np.column_stack((arc_x, arc_y))
-
-    ####################
     angle_radians = np.arctan(slope) + np.deg2rad(180)
 
-    # 호를 그리기 위한 각도 범위 설정
     theta = np.linspace(angle_radians - np.radians(13), angle_radians + np.radians(0), num_points)
     theta = np.flip(theta) 
   
-    # 호의 좌표 계산
     arc_x = center[0] + np.cos(theta) * np.linalg.norm(np.array(point) - np.array(center))
     arc_y = center[1] + np.sin(theta) * np.linalg.norm(np.array(point) - np.array(center))
 
@@ -385,13 +259,10 @@ def find_circle_intersection(x0, y0, x1, y1, r):
     
     d=math.sqrt((x1-x0)**2 + (y1-y0)**2)
     
-    # non intersecting
     if d > r0 + r1 :
         return 0
-    # One circle within other
     if d < abs(r0-r1):
         return 0
-    # coincident circles
     if d == 0 and r0 == r1:
         return 0
     else:
@@ -428,42 +299,32 @@ def generate_combinations(n, k):
     return all_combinations
 
 def calculate_triangle_angles(point1, point2, point3):
-    # 세 점 사이의 벡터 계산
     vector1 = point2 - point1
     vector2 = point3 - point1
     vector3 = point3 - point2
 
-    # 각 벡터의 길이 계산
     length1 = np.linalg.norm(vector1)
     length2 = np.linalg.norm(vector2)
     length3 = np.linalg.norm(vector3)
 
-    # 코사인 법칙을 사용하여 각을 계산
     angle1 = np.degrees(np.arccos(np.clip(np.dot(vector1, vector2) / (length1 * length2), -1.0, 1.0)))
     angle2 = np.degrees(np.arccos(np.clip(np.dot(-vector1, vector3) / (length1 * length3), -1.0, 1.0)))
-    angle3 = 180.0 - angle1 - angle2  # 각의 합은 180도입니다.
+    angle3 = 180.0 - angle1 - angle2  
 
     return angle1, angle2, angle3
 
 def calculate_direction(o1, a1):
-    # o1에서 a1으로 가는 방향 벡터 계산
     direction = (a1[0] - o1[0], a1[1] - o1[1])
-    
-    # 방향 벡터의 크기 계산
     magnitude = np.sqrt(direction[0] ** 2 + direction[1] ** 2)
-    
-    # 정규화된 방향 벡터 반환
     normalized_direction = (direction[0] / magnitude, direction[1] / magnitude)
     
     return normalized_direction
 
 def make_circle(point1, point2, point3):
-    # 각 좌표를 (x, y) 형태로 분리
     x1, y1 = point1
     x2, y2 = point2
     x3, y3 = point3
 
-    # 중심 좌표 계산
     A = x2 - x1
     B = y2 - y1
     C = x3 - x1
@@ -475,17 +336,14 @@ def make_circle(point1, point2, point3):
     G = 2 * (A * (y3 - y2) - B * (x3 - x2))
 
     if G == 0:
-        # 세 점이 일직선에 위치하는 경우
         return None
 
     center_x = (D * E - B * F) / G
     center_y = (A * F - C * E) / G
 
-    # 반지름 계산
     radius = math.sqrt((center_x - x1)**2 + (center_y - y1)**2)
 
     return (center_x, center_y, round(radius, 8))
-
 
 def objective_function(X):
     x1_, y1_ ,x2_, y2_, x3_, y3_, x4_, y4_ = X
@@ -515,7 +373,6 @@ def objective_function(X):
    
     return res
 
-
 def rec_constraints(params):
     x1, y1, x2, y2, x3, y3, x4, y4 = params
     
@@ -533,35 +390,13 @@ def rec_constraints(params):
 
     return res1 + res2
 
-
-def calculate_angles(p1, p2, p3, p4):
-    # 각 꼭짓점 사이의 벡터 계산
-    v1 = (p2[0] - p1[0], p2[1] - p1[1])
-    v2 = (p3[0] - p2[0], p3[1] - p2[1])
-    v3 = (p4[0] - p3[0], p4[1] - p3[1])
-    v4 = (p1[0] - p4[0], p1[1] - p4[1])
-
-    # 벡터의 내적 계산
-    dot_product = lambda v1, v2: v1[0] * v2[0] + v1[1] * v2[1]
-
-    # 각도 계산 함수
-    def calculate_angle(v1, v2):
-        dot = dot_product(v1, v2)
-        norm_v1 = math.sqrt(dot_product(v1, v1))
-        norm_v2 = math.sqrt(dot_product(v2, v2))
-        cos_theta = dot / (norm_v1 * norm_v2)
-
-        # 아크코사인을 이용하여 각을 계산하고, 라디안에서 도(degree)로 변환
-        angle = math.degrees(math.acos(cos_theta))
-        return angle
-
-    # 사각형의 각을 계산
-    angle1 = calculate_angle(v1, v2)
-    angle2 = calculate_angle(v2, v3)
-    angle3 = calculate_angle(v3, v4)
-    angle4 = calculate_angle(v4, v1)
-
-    return angle1, angle2, angle3, angle4
+def find_matching_rows(a, b):
+    matching_row_indices = []
+    for row in b:
+        row_extended = np.tile(row, (a.shape[0], 1))
+        matching_row_index = np.where((a == row_extended).all(axis=1))[0]
+        matching_row_indices.append(matching_row_index[0])
+    return matching_row_indices
 
 
 def sort_centers(pts):
@@ -578,35 +413,26 @@ def sort_centers(pts):
     sorted_idx = find_matching_rows(pts, sorted_pts)
     return sorted_idx
 
-def find_matching_rows(a, b):
-    matching_row_indices = []
-    for row in b:
-        # 현재 행을 복제하여 a와 비교하기 위해 행렬을 확장합니다.
-        row_extended = np.tile(row, (a.shape[0], 1))
-        # a와 row_extended를 비교하여 일치하는 행의 인덱스를 찾습니다.
-        matching_row_index = np.where((a == row_extended).all(axis=1))[0]
-        matching_row_indices.append(matching_row_index[0])
-    return matching_row_indices
-
-################################################################################
-
-laser_ch = 32
+###############################################################
+## Parameters
+laser_ch = 64
 radius = 0.12
+num_of_scan_iterations = 30
+num_of_target_poses = 3
 
-
-for posess in range(5, 21):
-    stage1_4_2_errors_100_covariance = []
-    blank_data = np.array([[0, 0, 0],
+for posess in range(1, num_of_target_poses + 1): 
+    l_four_centers = []
+    empty_data = np.array([[0, 0, 0],
                            [0, 0, 0], 
                            [0, 0, 0],
                            [0, 0, 0]], dtype=np.float64)
 
 
-    for iter in range(1, 31):
-        ## Note: This code processes the collected point cloud data. Please split each LiDAR scan point cloud. 
-        files = f'Your LiDAR scan path' ## scan path 
-    
-   
+    for iter in range(1, num_of_scan_iterations + 1): 
+        ## Note: This code processes collected point cloud. Please pre-split each LiDAR scan point cloud. 
+        print(f'Poses: {posess}/{num_of_target_poses} | Scans: {iter}/{num_of_scan_iterations}')
+
+        files = f'sample/calib_data/vlp_scans/{posess}/{iter}.npy' ## scan path 
         full_pts = np.load(files)
         circle_edge_np = data_roi_setting(full_pts)
         edges_etc, edges = edges_detector_laser_num(circle_edge_np) 
@@ -773,10 +599,8 @@ for posess in range(5, 21):
             mean = np.mean(psudo_centers, axis=0)
             cov_2ds.append(cov_matrix)
             mean_2ds.append(mean)
-       
-            ##########################
         
-        # Optimization with Lagrangian method 
+        ## Optimization with Lagrangian method 
         sorted_cov_2ds = [] 
         sorted_mean_2ds = []
         sorted_cov_splits = []
@@ -802,8 +626,6 @@ for posess in range(5, 21):
         constraints = (
             {'type': 'eq', 'fun': rec_constraints},
         )  
-        ################### 
-
         try:
             result = optimize.minimize(objective_function, initial_guess, constraints=constraints, method = 'Trust-constr' , options={'maxiter': 1000})
         except Exception as e : 
@@ -819,15 +641,15 @@ for posess in range(5, 21):
                                             mean_3ds[i][2]])
             stage2_centers.append(tmp_pred_center)
 
-        stage2_rotated_mean_3ds = (rot.T @ np.array(stage2_centers).T).T
+        optimized_centers = (rot.T @ np.array(stage2_centers).T).T
 
         ## Accumulate
-        blank_data = blank_data + stage2_rotated_mean_3ds
-        cum_stage2_centers = blank_data / iter
-        stage1_4_2_errors_100_covariance.append(stage2_rotated_mean_3ds)
+        l_four_centers.append(optimized_centers)
 
 
-    stage1_4_2_errors_100_covariance = np.array(stage1_4_2_errors_100_covariance)
-    np.save(f'Your save path', stage1_4_2_errors_100_covariance)
+    l_four_centers = np.array(l_four_centers)
+    l_four_centers = np.mean(l_four_centers, axis=0)
+
+    np.save(f'sample/calib_features/vlp_centers/{posess}.npy', l_four_centers)
 
 
