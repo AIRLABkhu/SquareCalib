@@ -51,9 +51,8 @@ Our method demonstrates a 21% improvement in simulation calibration performance 
 </p>
 
 #### 2.2 LiDAR featrues 
+* Check the number of poses & LiDAR scan iterations
 ```
-// check the number of poses & LiDAR scan iterations
-
 python3 ./src/vlp_features.py
 ```
 
@@ -73,16 +72,16 @@ python3 ./src/vlp_features.py
 * The camera features are extracted using the ([lvt2calib](https://github.com/Clothooo/lvt2calib)). 
 
 ### 4. 3D Point-to-Point Alignment 
-```
-// check the camera & LiDAR features path 
+* Check the camera & LiDAR features path
 
+```
 python3 ./src/alignment.py
 ```
 
 ### 5. Reprojection 
+* Check the extrinisc parameters path
+  
 ```
-// check the extrinisc parameters path 
-
 python3 ./src/reprojection.py
 ```
 
