@@ -66,7 +66,7 @@ python3 ./src/vlp_features.py
 </p>
 
 #### 3.2 Camera intrinsic parameters 
-* We used simulation ground truth intrinisc parameters.
+* We use the ground truth intrinisc parameters of GAZEBO.
 * In real-world, it can be estimated using OpenCV ([zhang's method](https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html)) 
 
 #### 3.3 Camera features 
