@@ -104,5 +104,15 @@ python3 ./src/reprojection.py
 ## Citation 
 Please consider citing this work if you use our code in your research:
 ```
-impending ...
+@ARTICLE{10778314,
+  author={Kim, Daeho and Shin, Seunghui and Hwang, Hyoseok},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={Camera-LiDAR Extrinsic Calibration Using Constrained Optimization With Circle Placement}, 
+  year={2025},
+  volume={10},
+  number={2},
+  pages={883-890},
+  keywords={Calibration;Laser radar;Point cloud compression;Three-dimensional displays;Cameras;Image edge detection;Feature extraction;Accuracy;Sensor phenomena and characterization;Sensor fusion;Calibration and identification;sensor fusion;intelligent transportation systems},
+  doi={10.1109/LRA.2024.3512253}
+}
 ```
